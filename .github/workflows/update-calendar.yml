@@ -1,0 +1,57 @@
+name: Update World Cup 2026 calendar
+
+# Regenerates world_cup_2026.ics from the FIFA API and commits it when the
+# data changes (e.g. when knockout participants are decided or kickoff
+# times are adjusted).
+
+on:
+  # Hourly during the tournament window keeps knockout brackets fresh.
+  schedule:
+    - cron: "17 * * * *"   # every hour at :17 (off-peak minute)
+  # Allow manual runs from the Actions tab.
+  workflow_dispatch:
+  # Regenerate whenever the generator itself changes.
+  push:
+    branches: [main]
+    paths:
+      - "scripts/generate_calendar.py"
+      - ".github/workflows/update-calendar.yml"
+
+# Allow the built-in token to push commits back to the repo.
+permissions:
+  contents: write
+
+concurrency:
+  group: update-calendar
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip requests
+
+      - name: Generate calendar
+        run: python scripts/generate_calendar.py -o world_cup_2026.ics
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- world_cup_2026.ics; then
+            echo "No changes to the calendar."
+          else
+            git add world_cup_2026.ics
+            git commit -m "Update World Cup 2026 calendar ($(date -u '+%Y-%m-%d %H:%M UTC'))"
+            git push
+            echo "Calendar updated and pushed."
+          fi
