@@ -1,29 +1,25 @@
 name: Update World Cup 2026 calendar
 
-# Regenerates the calendar feeds from the FIFA API and commits them when the
-# data changes (e.g. when knockout participants are decided or kickoff times
-# are adjusted). Produces two feeds from the same data:
-#   * world_cup_2026.ics         -> quiet feed (no alarms)
-#   * world_cup_2026_alarms.ics  -> same events + a 15-minute reminder
-#
-# Hardening: the generator validates its output before writing and exits
-# non-zero on bad/short/failed data without touching the existing file, so a
-# bad run can never overwrite a good feed. If any run fails, this workflow
-# opens (or comments on) a GitHub issue so the failure is visible.
+# Regenerates world_cup_2026.ics from the FIFA API and commits it when the
+# data changes (e.g. when knockout participants are decided or kickoff
+# times are adjusted).
 
 on:
+  # Hourly during the tournament window keeps knockout brackets fresh.
   schedule:
-    - cron: "17 * * * *"   # hourly, at :17 (off-peak minute)
+    - cron: "17 * * * *"   # every hour at :17 (off-peak minute)
+  # Allow manual runs from the Actions tab.
   workflow_dispatch:
+  # Regenerate whenever the generator itself changes.
   push:
     branches: [main]
     paths:
       - "scripts/generate_calendar.py"
       - ".github/workflows/update-calendar.yml"
 
+# Allow the built-in token to push commits back to the repo.
 permissions:
-  contents: write   # push the regenerated .ics files
-  issues: write     # open a failure-notification issue if a run fails
+  contents: write
 
 concurrency:
   group: update-calendar
@@ -44,61 +40,18 @@ jobs:
       - name: Install dependencies
         run: python -m pip install --upgrade pip requests
 
-      - name: Generate feeds and commit if changed
+      - name: Generate calendar
+        run: python scripts/generate_calendar.py -o world_cup_2026.ics
+
+      - name: Commit and push if changed
         run: |
-          set +e
-          python scripts/generate_calendar.py -o world_cup_2026.ics
-          rc_plain=$?
-          python scripts/generate_calendar.py --with-alarms -o world_cup_2026_alarms.ics
-          rc_alarms=$?
-          set -e
-
-          echo "plain generator exit: $rc_plain | alarms generator exit: $rc_alarms"
-
-          # Commit whichever feed(s) validated and actually changed. A feed
-          # that failed validation was left untouched, so it won't be staged.
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add world_cup_2026.ics world_cup_2026_alarms.ics
-          if git diff --cached --quiet; then
-            echo "No calendar changes to commit."
+          if git diff --quiet -- world_cup_2026.ics; then
+            echo "No changes to the calendar."
           else
-            git commit -m "Update World Cup 2026 calendar(s) ($(date -u '+%Y-%m-%d %H:%M UTC'))"
+            git add world_cup_2026.ics
+            git commit -m "Update World Cup 2026 calendar ($(date -u '+%Y-%m-%d %H:%M UTC'))"
             git push
-            echo "Calendar(s) updated and pushed."
-          fi
-
-          # If either feed failed, fail the job so the notification step runs.
-          # Any feed that succeeded has already been pushed above.
-          if [ "$rc_plain" -ne 0 ] || [ "$rc_alarms" -ne 0 ]; then
-            echo "::error::A feed failed to generate (plain=$rc_plain, alarms=$rc_alarms)."
-            exit 1
-          fi
-
-      - name: Open or update failure issue
-        if: failure()
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          ts=$(date -u '+%Y-%m-%d %H:%M UTC')
-          issue_payload=$(TS="$ts" RUN_URL="$RUN_URL" python3 -c 'import json,os; print(json.dumps({"title":"Calendar update failed","labels":["calendar-failure"],"body":"The scheduled calendar update failed on "+os.environ["TS"]+".\n\nThe existing feeds were left unchanged, so current subscribers are unaffected. The job retries on the next schedule.\n\nRun log: "+os.environ["RUN_URL"]}))')
-          comment_payload=$(TS="$ts" RUN_URL="$RUN_URL" python3 -c 'import json,os; print(json.dumps({"body":"Calendar update failed again on "+os.environ["TS"]+".\n\nRun log: "+os.environ["RUN_URL"]}))')
-
-          existing=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/$REPO/issues?state=open&labels=calendar-failure" \
-            | python3 -c "import sys,json; d=json.load(sys.stdin); print(d[0]['number'] if isinstance(d,list) and d else '')")
-
-          if [ -n "$existing" ]; then
-            curl -s -o /dev/null -X POST -H "Authorization: Bearer $GH_TOKEN" \
-              -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/$REPO/issues/$existing/comments" \
-              -d "$comment_payload" && echo "Commented on existing failure issue #$existing"
-          else
-            curl -s -o /dev/null -X POST -H "Authorization: Bearer $GH_TOKEN" \
-              -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/$REPO/issues" \
-              -d "$issue_payload" && echo "Opened a new failure issue"
+            echo "Calendar updated and pushed."
           fi

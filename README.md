@@ -43,30 +43,6 @@ Any calendar that supports **iCal / ICS / "subscribe by URL"** (Fantastical, Thu
 
 ---
 
-## 🔔 Optional: 15-minute match reminders
-
-If you'd like a notification **15 minutes before each match**, subscribe to the **alarms** feed instead of (or in addition to) the one above:
-
-```
-https://raw.githubusercontent.com/VU7U7U/fwc26-calendar/main/world_cup_2026_alarms.ics
-```
-
-It contains the exact same 104 matches and auto-updates the same way — the only difference is a built-in reminder before kickoff. The two feeds are independent, so the regular feed stays completely quiet; pick whichever you prefer.
-
-**Reminders depend on your calendar app**, and not all of them honour alarms on a *subscribed* feed:
-
-| App | 15-minute reminder on the alarms feed |
-| --- | --- |
-| Apple Calendar (iOS/macOS) | ✅ Works. When subscribing, leave **"Remove Alarms" off** in the subscription dialog. |
-| Google Calendar | ❌ Google ignores alarms embedded in subscribed (URL) calendars. |
-| Outlook | ⚠️ Inconsistent; reminders on subscribed internet calendars often don't fire. |
-
-This is a limitation of the calendar providers, not the feed. If you're on Google or Outlook and want a reminder for a specific match, the simplest route is to open that single event and add your own reminder, or set a phone alarm.
-
-> ℹ️ Subscribing to **both** feeds will show every match twice (once from each calendar). Most people pick just one.
-
----
-
 ## ⏰ A note on update timing
 
 This repository **regenerates the feed every hour** via GitHub Actions and commits it whenever something changes. However, **how quickly changes reach your calendar depends on your app**, not on this repo:
@@ -98,14 +74,12 @@ So a newly-decided knockout matchup may take a little while to appear, especiall
 
 - [`scripts/generate_calendar.py`](scripts/generate_calendar.py) fetches the official **FIFA data API** (`api.fifa.com`, competition `17`, season `285023`) and writes an [RFC 5545](https://datatracker.ietf.org/doc/html/rfc5545) `.ics` file.
 - Knockout placeholders from the API (`1A`, `2B`, `3ABCDF`, `W74`, `RU101`, …) are expanded into readable labels and overwritten with real team names once FIFA publishes them.
-- [`.github/workflows/update-calendar.yml`](.github/workflows/update-calendar.yml) runs the script hourly and commits the feeds when they change. It generates both `world_cup_2026.ics` and `world_cup_2026_alarms.ics`. Each event keeps a **stable UID** (tied to the FIFA match ID), so updates modify existing events in your calendar instead of creating duplicates.
-- **Safe updates:** before writing, the generator validates its output (parses, checks all 104 matches are present). If the API ever returns a short, empty, or malformed response, the run aborts **without touching the existing feed**, so a bad fetch can't corrupt a calendar people already rely on. A failed run opens a GitHub issue so it's noticed.
+- [`.github/workflows/update-calendar.yml`](.github/workflows/update-calendar.yml) runs the script hourly and commits `world_cup_2026.ics` when it changes. Each event keeps a **stable UID** (tied to the FIFA match ID), so updates modify existing events in your calendar instead of creating duplicates.
 
 ### Run it yourself
 ```bash
 pip install -r requirements.txt
-python scripts/generate_calendar.py -o world_cup_2026.ics                 # quiet feed
-python scripts/generate_calendar.py --with-alarms -o world_cup_2026_alarms.ics  # with 15-min reminders
+python scripts/generate_calendar.py -o world_cup_2026.ics
 ```
 
 ---
